@@ -18,7 +18,6 @@ type FormValues = {
     mobile_phone: string;
     office_phone: string;
 
-    // NEW FIELDS that match updated contact table
     academic_title: string;
     hospital_clinic_address: string;
     admin_assistant_name: string;
@@ -33,7 +32,6 @@ type FormValues = {
     occupation_id: number | '';
     department_id: number | '';
 
-    // investigator section
     has_pi_experience: boolean;
     pi_experience_notes: string;
     interested_in_pi_role: boolean;
@@ -49,6 +47,13 @@ type FormValues = {
 };
 
 type TabId = 'contact' | 'professional' | 'investigator' | 'admin';
+
+const steps: { id: TabId; label: string }[] = [
+    { id: 'contact', label: 'Contact Details' },
+    { id: 'professional', label: 'Professional & Location' },
+    { id: 'investigator', label: 'Investigator Profile' },
+    { id: 'admin', label: 'Admin Assistant' },
+];
 
 export function ContactForm() {
     const {
@@ -71,7 +76,10 @@ export function ContactForm() {
     const { showToast } = useToast();
     const { showLoader, hideLoader } = useLoader();
 
-    const [activeTab, setActiveTab] = useState<TabId>('contact');
+    // we now track which step we're on (0..3)
+    const [activeStep, setActiveStep] = useState(0);
+
+    const currentTab = steps[activeStep].id;
 
     const [countries, setCountries] = useState<Option[]>([]);
     const [states, setStates] = useState<Option[]>([]);
@@ -88,6 +96,7 @@ export function ContactForm() {
     const selectedStateId = watch('state_id');
     const isInvestigator = watch('is_investigator');
 
+    // --- Load dropdown data ---
     useEffect(() => {
         const loadStatic = async () => {
             try {
@@ -156,6 +165,16 @@ export function ContactForm() {
         loadCities();
     }, [selectedStateId, showToast]);
 
+    // --- Step navigation (does NOT save) ---
+    const goNext = () => {
+        setActiveStep(prev => Math.min(prev + 1, steps.length - 1));
+    };
+
+    const goPrev = () => {
+        setActiveStep(prev => Math.max(prev - 1, 0));
+    };
+
+    // --- Submit handler (only called when clicking Save Contact on last step) ---
     const onSubmit = async (values: FormValues) => {
         setSubmitting(true);
         setMessage('');
@@ -164,7 +183,38 @@ export function ContactForm() {
         const { is_investigator, inv_notes, ...rest } = values;
 
         try {
-            // 1) Get current logged-in user
+            // 0) Clean/normalize email
+            const trimmedEmail = rest.email?.trim() || null;
+
+            // 1) If email is provided, check if a contact already exists with same email
+            if (trimmedEmail) {
+                const { data: existing, error: existingError } = await supabase
+                    .from('contact')
+                    .select('id')
+                    .ilike('email', trimmedEmail) // case-insensitive
+                    .maybeSingle();
+
+                if (existingError) {
+                    console.error('Email check failed', existingError);
+                    const msg = 'Could not verify email uniqueness. Please try again.';
+                    setMessage(msg);
+                    showToast(msg, 'error');
+                    setSubmitting(false);
+                    hideLoader();
+                    return;
+                }
+
+                if (existing) {
+                    const msg = 'A contact with this email already exists.';
+                    setMessage(msg);
+                    showToast(msg, 'error');
+                    setSubmitting(false);
+                    hideLoader();
+                    return;
+                }
+            }
+
+            // 2) Get current logged-in user
             const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
             if (sessionError) {
@@ -188,13 +238,13 @@ export function ContactForm() {
 
             const userId = session.user.id;
 
-            // 2) Insert contact WITH created_by and new fields
+            // 3) Insert contact WITH created_by and all fields
             const { data: contactData, error: contactError } = await supabase
                 .from('contact')
                 .insert({
                     first_name: rest.first_name,
                     last_name: rest.last_name,
-                    email: rest.email || null,
+                    email: trimmedEmail,
                     mobile_phone: rest.mobile_phone || null,
                     office_phone: rest.office_phone || null,
                     academic_title: rest.academic_title || null,
@@ -215,7 +265,14 @@ export function ContactForm() {
                 .single();
 
             if (contactError || !contactData) {
-                const msg = contactError?.message || 'Error creating contact.';
+                // extra safety: handle unique constraint here as well
+                const rawMsg = contactError?.message || '';
+                let msg = contactError?.message || 'Error creating contact.';
+
+                if (rawMsg.includes('contact_email_unique') || rawMsg.includes('duplicate key value')) {
+                    msg = 'A contact with this email already exists.';
+                }
+
                 setMessage(msg);
                 showToast(msg, 'error');
                 setSubmitting(false);
@@ -223,7 +280,7 @@ export function ContactForm() {
                 return;
             }
 
-            // 3) Investigator profile if flagged
+            // 4) Investigator profile if flagged
             if (is_investigator) {
                 const { error: invError } = await supabase
                     .from('contact_investigator_profile')
@@ -256,7 +313,7 @@ export function ContactForm() {
             setMessage('Contact saved successfully.');
             showToast('Contact saved successfully.', 'success');
             reset();
-            setActiveTab('contact');
+            setActiveStep(0);
         } catch (err: any) {
             console.error('Save failed', err);
             const msg = err?.message || 'Something went wrong.';
@@ -283,13 +340,6 @@ export function ContactForm() {
             router.replace('/login');
         }
     };
-
-    const tabs: { id: TabId; label: string }[] = [
-        { id: 'contact', label: 'Contact Details' },
-        { id: 'professional', label: 'Professional & Location' },
-        { id: 'investigator', label: 'Investigator Profile' },
-        { id: 'admin', label: 'Admin Assistant' },
-    ];
 
     return (
         <div className="relative bg-gray-50 min-h-screen py-6 px-4">
@@ -339,30 +389,32 @@ export function ContactForm() {
                             className="mb-8 mx-auto block"
                         />
                         <h3 className="text-slate-600 text-2xl mt-3">Contact Form</h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                            Use Next / Previous to move between sections. Data is saved only when you click
+                            &quot;Save Contact&quot; on the last step.
+                        </p>
                     </div>
 
-                    {/* Tabs */}
+                    {/* Step header (like tabs, but main navigation is via Next/Previous) */}
                     <div className="border-b border-slate-200 mb-4 flex gap-2 flex-wrap">
-                        {tabs.map(tab => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setActiveTab(tab.id)}
+                        {steps.map((step, index) => (
+                            <div
+                                key={step.id}
                                 className={`px-3 py-2 text-xs sm:text-sm rounded-t-md border-b-2
-                  ${activeTab === tab.id
+                  ${index === activeStep
                                         ? 'border-blue-600 text-blue-600 bg-blue-50'
-                                        : 'border-transparent text-slate-500 hover:text-slate-800'
+                                        : 'border-transparent text-slate-400'
                                     }
                 `}
                             >
-                                {tab.label}
-                            </button>
+                                {step.label}
+                            </div>
                         ))}
                     </div>
 
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                        {/* TAB: Contact Details */}
-                        {activeTab === 'contact' && (
+                        {/* STEP: Contact Details */}
+                        {currentTab === 'contact' && (
                             <section className="space-y-3">
                                 <h3 className="font-semibold text-sm">Contact Details</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -414,8 +466,8 @@ export function ContactForm() {
                             </section>
                         )}
 
-                        {/* TAB: Professional & Location */}
-                        {activeTab === 'professional' && (
+                        {/* STEP: Professional & Location */}
+                        {currentTab === 'professional' && (
                             <section className="space-y-3">
                                 <h3 className="font-semibold text-sm">Professional & Location</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -531,8 +583,8 @@ export function ContactForm() {
                             </section>
                         )}
 
-                        {/* TAB: Investigator */}
-                        {activeTab === 'investigator' && (
+                        {/* STEP: Investigator */}
+                        {currentTab === 'investigator' && (
                             <section className="space-y-3">
                                 <div className="flex items-center gap-2">
                                     <input type="checkbox" {...register('is_investigator')} />
@@ -615,8 +667,8 @@ export function ContactForm() {
                             </section>
                         )}
 
-                        {/* TAB: Admin Assistant */}
-                        {activeTab === 'admin' && (
+                        {/* STEP: Admin Assistant */}
+                        {currentTab === 'admin' && (
                             <section className="space-y-3">
                                 <h3 className="font-semibold text-sm">Admin Assistant Details</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -646,17 +698,47 @@ export function ContactForm() {
                             </section>
                         )}
 
+                        {/* Message */}
                         {message && (
                             <p className="text-xs text-slate-600">{message}</p>
                         )}
 
-                        <button
-                            type="submit"
-                            disabled={submitting}
-                            className="px-4 py-2 rounded bg-[#0B62C1] hover:bg-emerald-500 text-sm text-white disabled:opacity-60"
-                        >
-                            {submitting ? 'Saving...' : 'Save Contact'}
-                        </button>
+                        {/* Navigation + Save (only last step has Save) */}
+                        <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+                            <div>
+                                {activeStep > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={goPrev}
+                                        className="px-4 py-2 mr-2 rounded border border-slate-300 text-sm text-slate-700 bg-white hover:bg-slate-100"
+                                    >
+                                        Previous
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="ml-auto flex gap-2">
+                                {activeStep < steps.length - 1 && (
+                                    <button
+                                        type="button"
+                                        onClick={goNext}
+                                        className="px-4 py-2 rounded bg-slate-600 hover:bg-slate-700 text-sm text-white"
+                                    >
+                                        Next
+                                    </button>
+                                )}
+
+                                {activeStep === steps.length - 1 && (
+                                    <button
+                                        type="submit"
+                                        disabled={submitting}
+                                        className="px-4 py-2 rounded bg-[#0B62C1] hover:bg-emerald-500 text-sm text-white disabled:opacity-60"
+                                    >
+                                        {submitting ? 'Saving...' : 'Save Contact'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                     </form>
                 </div>
             </div>
