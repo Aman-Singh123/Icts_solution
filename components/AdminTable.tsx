@@ -1,7 +1,8 @@
-
+// components/AdminTable.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import Image from 'next/image';
 
@@ -17,6 +18,8 @@ type ContactRow = {
 };
 
 export function AdminTable() {
+    const router = useRouter();
+
     const [rows, setRows] = useState<ContactRow[]>([]);
     const [filtered, setFiltered] = useState<ContactRow[]>([]);
     const [search, setSearch] = useState('');
@@ -25,6 +28,8 @@ export function AdminTable() {
     const [countries, setCountries] = useState<{ id: number; name: string }[]>(
         []
     );
+
+    const [loggingOut, setLoggingOut] = useState(false);
 
     useEffect(() => {
         const load = async () => {
@@ -47,8 +52,29 @@ export function AdminTable() {
                     .order('created_at', { ascending: false });
 
                 if (!error && data) {
-                    setRows(data as ContactRow[]);
-                    setFiltered(data as ContactRow[]);
+                    // map raw rows to ContactRow[] to satisfy types
+                    const mapped: ContactRow[] = (data as any[]).map((r: any) => {
+                        // organization and country may come as arrays or objects depending on relationship
+                        const orgRaw = r.organization;
+                        const countryRaw = r.country;
+
+                        const org = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw ?? null;
+                        const country = Array.isArray(countryRaw) ? countryRaw[0] : countryRaw ?? null;
+
+                        return {
+                            id: Number(r.id),
+                            first_name: r.first_name ?? '',
+                            last_name: r.last_name ?? '',
+                            email: r.email ?? null,
+                            mobile_phone: r.mobile_phone ?? null,
+                            created_at: r.created_at ?? new Date().toISOString(),
+                            organization: org ? { name: org.name ?? null } : undefined,
+                            country: country ? { name: country.name ?? null } : undefined,
+                        };
+                    });
+
+                    setRows(mapped);
+                    setFiltered(mapped);
                 }
 
                 const { data: countryData } = await supabase
@@ -124,6 +150,18 @@ export function AdminTable() {
         document.body.removeChild(link);
     };
 
+    const handleLogout = async () => {
+        setLoggingOut(true);
+        try {
+            await supabase.auth.signOut();
+        } catch (e) {
+            console.warn('Sign out error', e);
+        } finally {
+            setLoggingOut(false);
+            router.replace('/login');
+        }
+    };
+
     if (loading)
         return (
             <div className="bg-gray-50 min-h-[200px] flex items-center justify-center p-6">
@@ -134,16 +172,50 @@ export function AdminTable() {
         );
 
     return (
-        <div className="bg-gray-50 min-h-screen py-6 px-4">
-            <div className="max-w-full mx-auto p-6">
+        <div className="relative bg-gray-50 min-h-screen py-6 px-4">
+            {/* TOP-LEFT USER ICON (logout) */}
+            <div className="absolute top-4 right-4 z-50">
+                <button
+                    onClick={handleLogout}
+                    disabled={loggingOut}
+                    aria-label="Logout"
+                    className="flex items-center gap-2 px-3 h-10 rounded-full bg-white border border-slate-300 shadow hover:bg-slate-100 focus:outline-none"
+                >
+                    {/* user icon */}
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="w-5 h-5 text-slate-700"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                    >
+                        <path
+                            strokeWidth={1.8}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0z"
+                        />
+                        <path
+                            strokeWidth={1.8}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M12 14c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"
+                        />
+                    </svg>
+
+                    {/* logout text */}
+                    <span className="text-sm font-medium text-slate-700">
+                        Logout
+                    </span>
+                </button>
+            </div>
+
+            <div className="max-w-full mx-auto p-14">
                 <div className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-6">
                         <div>
                             <Image width={160} height={160} src="/Images/icts.jpeg" alt="ICTS" className=" mb-8 mx-auto block" />
-                            <h2 className="text-slate-700 text-lg font-semibold mt-2">
-                                Contacts
-                            </h2>
                             <p className="text-sm text-slate-500">Manage your contacts</p>
                         </div>
 
@@ -185,7 +257,7 @@ export function AdminTable() {
                     {/* Table */}
                     <div className="overflow-x-auto border border-slate-100 rounded">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50">
+                            <thead className="bg-slate-300">
                                 <tr>
                                     <th className="px-3 py-3 text-left text-slate-700 font-medium">Name</th>
                                     <th className="px-3 py-3 text-left text-slate-700 font-medium">Email</th>
