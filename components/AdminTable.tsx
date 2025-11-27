@@ -169,23 +169,49 @@ export function AdminTable() {
 
     const handleLogout = async () => {
         setLoggingOut(true);
+
         try {
             const { createClient } = await import('@supabase/supabase-js');
             const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
             const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
             if (!url || !anon) {
                 console.error('Missing public envs for logout');
-                return router.replace('/login');
+                window.location.assign('/login');
+                return;
             }
             const supabase = createClient(url, anon);
+
+            // call signOut
             await supabase.auth.signOut();
+
+            // wait up to 3s for session to be cleared
+            const start = Date.now();
+            while (Date.now() - start < 3000) {
+                const { data } = await supabase.auth.getSession();
+                if (!data?.session) break;
+                // small delay
+                await new Promise(res => setTimeout(res, 200));
+            }
+
+            // Ensure any client-side storage keys supabase may have are cleared
+            try {
+                Object.keys(localStorage).forEach((k) => {
+                    if (k.startsWith('sb-') || k.includes('supabase')) localStorage.removeItem(k);
+                });
+            } catch (e) {
+                // ignore (localStorage might be unavailable in some contexts)
+            }
+
         } catch (e) {
             console.warn('Sign out error', e);
         } finally {
             setLoggingOut(false);
-            router.replace('/login');
+            // hard navigate (full reload) to ensure no stale state
+            window.location.assign('/login');
         }
     };
+
+
 
     if (loading)
         return (
