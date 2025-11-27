@@ -5,7 +5,9 @@ import { useForm } from 'react-hook-form';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useLoader } from "@/components/LoaderProvider";
 import Image from 'next/image';
+import { useToast } from '@/components/Toast';
 type SignupForm = {
     first_name: string;
     last_name: string;
@@ -19,6 +21,8 @@ export default function SignupPage() {
     const { register, handleSubmit, watch } = useForm<SignupForm>();
     const [errorMsg, setErrorMsg] = useState('');
     const [loading, setLoading] = useState(false);
+    const { showLoader, hideLoader } = useLoader()
+    const  {showToast} = useToast()
 
     // show/hide password states
     const [showPassword, setShowPassword] = useState(false);
@@ -28,14 +32,16 @@ export default function SignupPage() {
     const passwordValue = watch('password', '');
 
     const onSubmit = async (values: SignupForm) => {
-        setErrorMsg('');
+        setErrorMsg("");
 
         if (values.password !== values.confirm_password) {
-            setErrorMsg("Passwords don't match");
+            showToast("Passwords do not match!", "error");
             return;
         }
 
         setLoading(true);
+        showLoader();
+        showToast("Creating account...", "loading");
 
         try {
             const { data, error } = await supabase.auth.signUp({
@@ -44,36 +50,44 @@ export default function SignupPage() {
             });
 
             if (error) {
-                setErrorMsg(error.message);
+                hideLoader();
                 setLoading(false);
+                showToast(error.message, "error");
                 return;
             }
 
             const user = data.user;
             if (user) {
-                const full_name = `${values.first_name || ''} ${values.last_name || ''}`.trim();
+                const full_name = `${values.first_name || ""} ${values.last_name || ""}`.trim();
 
-                const { error: profileError } = await supabase.from('profiles').insert({
+                const { error: profileError } = await supabase.from("profiles").insert({
                     id: user.id,
                     full_name,
                     is_admin: false,
-                    mobile: values.mobile || null
+                    mobile: values.mobile || null,
                 });
 
                 if (profileError) {
-                    setErrorMsg(profileError.message);
+                    hideLoader();
                     setLoading(false);
+                    showToast(profileError.message, "error");
                     return;
                 }
             }
 
+            hideLoader();
             setLoading(false);
-            router.replace('/login');
+
+            showToast("Signup successful! Please verify your email.", "success");
+
+            router.replace("/login");
         } catch (err: any) {
-            setErrorMsg(err?.message || 'Something went wrong');
+            hideLoader();
             setLoading(false);
+            showToast(err?.message || "Something went wrong", "error");
         }
     };
+
 
     return (
         <div className="max-w-4xl max-sm:max-w-lg mx-auto p-6 mt-6">
@@ -193,15 +207,13 @@ export default function SignupPage() {
                     </div>
                 </div>
 
-                {errorMsg && (
-                    <p className="text-red-500 text-sm mt-6">{errorMsg}</p>
-                )}
+               
 
                 <div className="mt-12">
                     <button
                         type="submit"
                         disabled={loading}
-                        className="mx-auto block min-w-32 py-3 px-6 text-sm font-medium tracking-wider rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none"
+                        className="mx-auto block min-w-32 py-3 px-6 text-sm font-medium tracking-wider rounded-md text-white bg-[#0B62C1] hover:bg-blue-700 focus:outline-none"
                     >
                         {loading ? 'Creating account...' : 'Sign up'}
                     </button>

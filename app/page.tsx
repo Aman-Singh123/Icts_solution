@@ -4,9 +4,11 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+  import { useLoader } from '@/components/LoaderProvider';
 
 export default function HomePage() {
   const router = useRouter();
+  const {showLoader} = useLoader()
 
   useEffect(() => {
     const checkSession = async () => {
@@ -33,5 +35,5 @@ export default function HomePage() {
     checkSession();
   }, [router]);
 
-  return <p>Loading...</p>;
+  return ;
 }

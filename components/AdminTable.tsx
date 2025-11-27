@@ -272,7 +272,7 @@ export function AdminTable() {
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <button onClick={exportToCsv} className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-sm text-white">Export CSV</button>
+                            <button onClick={exportToCsv} className="px-3 py-2 rounded bg-[#0B62C1] hover:bg-emerald-500 text-sm text-white">Export CSV</button>
                         </div>
                     </div>
 

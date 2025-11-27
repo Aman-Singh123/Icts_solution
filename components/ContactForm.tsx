@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { useLoader } from './LoaderProvider';
+import { useToast } from './Toast';
 
 type Option = { id: number; name: string };
 
@@ -55,6 +57,8 @@ export function ContactForm() {
     });
 
     const router = useRouter();
+    const { showToast } = useToast();
+    const { showLoader, hideLoader } = useLoader();
     const [countries, setCountries] = useState<Option[]>([]);
     const [states, setStates] = useState<Option[]>([]);
     const [cities, setCities] = useState<Option[]>([]);
@@ -141,8 +145,34 @@ export function ContactForm() {
 
         const { is_investigator, inv_notes, ...rest } = values;
 
+        showLoader();
+
         try {
-            // Insert contact
+            // 1) Get current logged-in user
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+            if (sessionError) {
+                hideLoader();
+                setSubmitting(false);
+                const msg = sessionError.message || 'Could not get user session.';
+                setMessage(msg);
+                showToast(msg, 'error');
+                return;
+            }
+
+            const session = sessionData.session;
+            if (!session) {
+                hideLoader();
+                setSubmitting(false);
+                const msg = 'You must be logged in to save a contact.';
+                setMessage(msg);
+                showToast(msg, 'error');
+                return;
+            }
+
+            const userId = session.user.id; // 👈 this is what we store in created_by
+
+            // 2) Insert contact WITH created_by
             const { data: contactData, error: contactError } = await supabase
                 .from('contact')
                 .insert({
@@ -158,17 +188,21 @@ export function ContactForm() {
                     specialty_id: rest.specialty_id || null,
                     occupation_id: rest.occupation_id || null,
                     department_id: rest.department_id || null,
+                    created_by: userId,          // 👈 THIS is the important line
                 })
                 .select('id')
                 .single();
 
             if (contactError || !contactData) {
-                setMessage(contactError?.message || 'Error creating contact.');
+                hideLoader();
                 setSubmitting(false);
+                const msg = contactError?.message || 'Error creating contact.';
+                setMessage(msg);
+                showToast(msg, 'error');
                 return;
             }
 
-            // Investigator profile if flagged
+            // 3) Investigator profile if flagged
             if (is_investigator) {
                 const { error: invError } = await supabase
                     .from('contact_investigator_profile')
@@ -188,28 +222,38 @@ export function ContactForm() {
                     });
 
                 if (invError) {
-                    setMessage('Contact saved but investigator profile failed: ' + invError.message);
+                    hideLoader();
                     setSubmitting(false);
+                    const msg =
+                        'Contact saved but investigator profile failed: ' + invError.message;
+                    setMessage(msg);
+                    showToast(msg, 'error');
                     return;
                 }
             }
 
-            setMessage('Contact saved successfully.');
+            hideLoader();
             setSubmitting(false);
             reset();
+            setMessage('Contact saved successfully.');
+            showToast('Contact saved successfully.', 'success');
         } catch (err: any) {
             console.error('Save failed', err);
-            setMessage(err?.message || 'Something went wrong.');
+            hideLoader();
             setSubmitting(false);
+            const msg = err?.message || 'Something went wrong.';
+            setMessage(msg);
+            showToast(msg, 'error');
         }
     };
+
 
     const handleLogout = async () => {
         setLoggingOut(true);
         try {
             await supabase.auth.signOut();
         } catch (e) {
-         
+
             console.warn('Sign out error', e);
         } finally {
             setLoggingOut(false);
@@ -493,12 +537,10 @@ export function ContactForm() {
                             )}
                         </section>
 
-                        {message && <p className="text-sm text-emerald-600">{message}</p>}
-
                         <button
                             type="submit"
                             disabled={submitting}
-                            className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-sm text-white"
+                            className="px-4 py-2 rounded bg-[#0B62C1] hover:bg-emerald-500 text-sm text-white"
                         >
                             {submitting ? 'Saving...' : 'Save Contact'}
                         </button>

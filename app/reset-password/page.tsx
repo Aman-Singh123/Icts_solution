@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { useLoader } from "@/components/LoaderProvider";
 
 type ResetForm = {
     password: string;
@@ -16,6 +17,7 @@ export default function ResetPasswordPage() {
     const [loading, setLoading] = useState(false);
     const router = useRouter();
     const { showToast } = useToast();
+    const { showLoader, hideLoader } = useLoader()
 
     useEffect(() => {
         const verifySession = async () => {
@@ -34,13 +36,14 @@ export default function ResetPasswordPage() {
         }
 
         setLoading(true);
-        showToast("Updating password...", "loading");
+        showLoader()
 
         const { error } = await supabase.auth.updateUser({
             password: values.password,
         });
 
         setLoading(false);
+        hideLoader()
 
         if (error) {
             showToast(error.message, "error");
@@ -88,7 +91,7 @@ export default function ResetPasswordPage() {
                     </p>
                 </form>
             </div>
-            
+
         </div>
     );
 }

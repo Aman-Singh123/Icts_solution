@@ -80,7 +80,7 @@ export function AuthGuard({ children, requireAdmin }: AuthGuardProps) {
         return () => { mounted = false; };
     }, [router, requireAdmin]);
 
-    if (loading) return <p>Checking access...</p>;
+    if (loading) return;
     if (!allowed) return null;
     return <>{children}</>;
 }

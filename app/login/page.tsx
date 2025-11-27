@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
+import { useLoader } from "@/components/LoaderProvider";
 import Image from "next/image";
 
 type LoginForm = {
@@ -20,6 +21,7 @@ export default function LoginPage() {
 
     const router = useRouter();
     const { showToast } = useToast();
+    const { showLoader, hideLoader } = useLoader()
     const emailValue = watch("email");
 
     // Redirect if logged in
@@ -35,6 +37,7 @@ export default function LoginPage() {
 
     const onSubmit = async (values: LoginForm) => {
         setLoading(true);
+        showLoader()
 
         const { data, error } = await supabase.auth.signInWithPassword({
             email: values.email,
@@ -42,6 +45,9 @@ export default function LoginPage() {
         });
 
         setLoading(false);
+        hideLoader()
+
+        
 
         if (error) {
             showToast(error.message, "error");
@@ -124,7 +130,7 @@ export default function LoginPage() {
                         </div>
 
                         {/* Submit */}
-                        <button type="submit" disabled={loading} className="w-full py-2 px-4 text-[15px] font-medium tracking-wide rounded-md text-white bg-blue-300 hover:bg-blue-700 focus:outline-none" > {loading ? 'Logging in...' : 'Sign in'} </button>
+                        <button type="submit" disabled={loading} className="w-full py-2 px-4 text-[15px] font-medium tracking-wide rounded-md text-white bg-[#0B62C1] hover:bg-blue-700 focus:outline-none" > {loading ? 'Logging in...' : 'Sign in'} </button>
 
                         <p className="text-sm text-center mt-4">
                             Don't have an account?
