@@ -4,7 +4,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import Image from 'next/image';
 
 type ContactRow = {
     id: number;
@@ -52,9 +51,9 @@ export function AdminTable() {
                     .order('created_at', { ascending: false });
 
                 if (!error && data) {
-                    // map raw rows to ContactRow[] to satisfy types
+                    // data can contain organization/country as arrays or objects.
+                    // Map each raw row into ContactRow explicitly.
                     const mapped: ContactRow[] = (data as any[]).map((r: any) => {
-                        // organization and country may come as arrays or objects depending on relationship
                         const orgRaw = r.organization;
                         const countryRaw = r.country;
 
@@ -174,48 +173,35 @@ export function AdminTable() {
     return (
         <div className="relative bg-gray-50 min-h-screen py-6 px-4">
             {/* TOP-LEFT USER ICON (logout) */}
-            <div className="absolute top-4 right-4 z-50">
+            <div className="absolute top-4 left-4 z-50">
                 <button
                     onClick={handleLogout}
                     disabled={loggingOut}
                     aria-label="Logout"
-                    className="flex items-center gap-2 px-3 h-10 rounded-full bg-white border border-slate-300 shadow hover:bg-slate-100 focus:outline-none"
+                    title="Logout"
+                    className="w-10 h-10 flex items-center justify-center rounded-full bg-white border border-slate-300 shadow hover:bg-slate-100 focus:outline-none"
                 >
                     {/* user icon */}
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="w-5 h-5 text-slate-700"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                    >
-                        <path
-                            strokeWidth={1.8}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0z"
-                        />
-                        <path
-                            strokeWidth={1.8}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M12 14c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z"
-                        />
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        <path strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" d="M12 14c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z" />
                     </svg>
-
-                    {/* logout text */}
-                    <span className="text-sm font-medium text-slate-700">
-                        Logout
-                    </span>
                 </button>
             </div>
 
-            <div className="max-w-full mx-auto p-14">
+            <div className="max-w-4xl mx-auto p-6">
                 <div className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-6">
                         <div>
-                            <Image width={160} height={160} src="/Images/icts.jpeg" alt="ICTS" className=" mb-8 mx-auto block" />
+                            <img
+                                src="https://readymadeui.com/readymadeui.svg"
+                                alt="logo"
+                                className="w-36"
+                            />
+                            <h2 className="text-slate-700 text-lg font-semibold mt-2">
+                                Contacts
+                            </h2>
                             <p className="text-sm text-slate-500">Manage your contacts</p>
                         </div>
 
@@ -257,7 +243,7 @@ export function AdminTable() {
                     {/* Table */}
                     <div className="overflow-x-auto border border-slate-100 rounded">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-300">
+                            <thead className="bg-slate-50">
                                 <tr>
                                     <th className="px-3 py-3 text-left text-slate-700 font-medium">Name</th>
                                     <th className="px-3 py-3 text-left text-slate-700 font-medium">Email</th>
