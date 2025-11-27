@@ -1,7 +1,6 @@
 // components/AuthGuard.tsx
 'use client';
 import { ReactNode, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 
 interface AuthGuardProps {
@@ -15,38 +14,73 @@ export function AuthGuard({ children, requireAdmin }: AuthGuardProps) {
     const [allowed, setAllowed] = useState(false);
 
     useEffect(() => {
-        const check = async () => {
-            const { data } = await supabase.auth.getSession();
-            const session = data.session;
+        let mounted = true;
 
-            if (!session) {
-                router.replace('/login');
+        const check = async () => {
+            setLoading(true);
+
+            // dynamic import and create client in browser only
+            const { createClient } = await import('@supabase/supabase-js');
+
+            const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+            const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+            if (!url || !anon) {
+                console.error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
+                // optionally redirect to an error page
                 return;
             }
 
-            if (requireAdmin) {
-                const { data: profile, error } = await supabase
-                    .from('profiles')
-                    .select('is_admin')
-                    .eq('id', session.user.id)
-                    .maybeSingle();
+            const supabase = createClient(url, anon);
 
-                if (error || !profile?.is_admin) {
-                    
-                    router.replace('/contact');
+            try {
+                const { data } = await supabase.auth.getSession();
+                const session = data.session;
+
+                if (!session) {
+                    if (!mounted) return;
+                    setAllowed(false);
+                    setLoading(false);
+                    router.replace('/login');
                     return;
                 }
-            }
 
-            setAllowed(true);
-            setLoading(false);
+                if (requireAdmin) {
+                    const { data: profile, error } = await supabase
+                        .from('profiles')
+                        .select('is_admin')
+                        .eq('id', session.user.id)
+                        .maybeSingle();
+
+                    if (error || !profile?.is_admin) {
+                        // sign out and redirect to contact (optional signOut)
+                        try { await supabase.auth.signOut(); } catch (e) { }
+                        if (!mounted) return;
+                        setAllowed(false);
+                        setLoading(false);
+                        router.replace('/contact');
+                        return;
+                    }
+                }
+
+                if (!mounted) return;
+                setAllowed(true);
+                setLoading(false);
+            } catch (err) {
+                console.error('Auth check failed', err);
+                try { await supabase.auth.signOut(); } catch (e) { }
+                if (!mounted) return;
+                setAllowed(false);
+                setLoading(false);
+                router.replace('/login');
+            }
         };
 
         check();
+
+        return () => { mounted = false; };
     }, [router, requireAdmin]);
 
-    if (loading && !allowed) return <p>Checking access...</p>;
+    if (loading) return <p>Checking access...</p>;
     if (!allowed) return null;
-
     return <>{children}</>;
 }

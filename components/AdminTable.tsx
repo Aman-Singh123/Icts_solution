@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
 
 type ContactRow = {
     id: number;
@@ -24,15 +23,29 @@ export function AdminTable() {
     const [search, setSearch] = useState('');
     const [countryFilter, setCountryFilter] = useState('');
     const [loading, setLoading] = useState(true);
-    const [countries, setCountries] = useState<{ id: number; name: string }[]>(
-        []
-    );
-
+    const [countries, setCountries] = useState<{ id: number; name: string }[]>([]);
     const [loggingOut, setLoggingOut] = useState(false);
 
+    // store supabase client in a ref-like variable inside the effect scope
     useEffect(() => {
+        let mounted = true;
+        let supabase: any = null;
+
         const load = async () => {
             setLoading(true);
+
+            const { createClient } = await import('@supabase/supabase-js');
+
+            const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+            const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+            if (!url || !anon) {
+                console.error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
+                setLoading(false);
+                return;
+            }
+
+            supabase = createClient(url, anon);
+
             try {
                 const { data, error } = await supabase
                     .from('contact')
@@ -51,12 +64,9 @@ export function AdminTable() {
                     .order('created_at', { ascending: false });
 
                 if (!error && data) {
-                    // data can contain organization/country as arrays or objects.
-                    // Map each raw row into ContactRow explicitly.
                     const mapped: ContactRow[] = (data as any[]).map((r: any) => {
                         const orgRaw = r.organization;
                         const countryRaw = r.country;
-
                         const org = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw ?? null;
                         const country = Array.isArray(countryRaw) ? countryRaw[0] : countryRaw ?? null;
 
@@ -72,6 +82,7 @@ export function AdminTable() {
                         };
                     });
 
+                    if (!mounted) return;
                     setRows(mapped);
                     setFiltered(mapped);
                 }
@@ -80,14 +91,20 @@ export function AdminTable() {
                     .from('country')
                     .select('id, name')
                     .order('name');
+
+                if (!mounted) return;
                 setCountries(countryData ?? []);
             } catch (err) {
                 console.error('Load failed', err);
             } finally {
+                if (!mounted) return;
                 setLoading(false);
             }
         };
+
         load();
+
+        return () => { mounted = false; };
     }, []);
 
     useEffect(() => {
@@ -133,7 +150,7 @@ export function AdminTable() {
                 r.organization?.name ?? '',
                 r.created_at,
             ]
-                .map(value => `"${String(value).replace(/"/g, '""')}"`)
+                .map(v => `"${String(v).replace(/"/g, '""')}"`)
                 .join(',')
         );
 
@@ -152,6 +169,14 @@ export function AdminTable() {
     const handleLogout = async () => {
         setLoggingOut(true);
         try {
+            const { createClient } = await import('@supabase/supabase-js');
+            const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+            const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+            if (!url || !anon) {
+                console.error('Missing public envs for logout');
+                return router.replace('/login');
+            }
+            const supabase = createClient(url, anon);
             await supabase.auth.signOut();
         } catch (e) {
             console.warn('Sign out error', e);
@@ -181,7 +206,6 @@ export function AdminTable() {
                     title="Logout"
                     className="w-10 h-10 flex items-center justify-center rounded-full bg-white border border-slate-300 shadow hover:bg-slate-100 focus:outline-none"
                 >
-                    {/* user icon */}
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0z" />
                         <path strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" d="M12 14c-5 0-8 2.5-8 5v1h16v-1c0-2.5-3-5-8-5z" />
@@ -194,50 +218,24 @@ export function AdminTable() {
                     {/* Header */}
                     <div className="flex items-center justify-between mb-6">
                         <div>
-                            <img
-                                src="https://readymadeui.com/readymadeui.svg"
-                                alt="logo"
-                                className="w-36"
-                            />
-                            <h2 className="text-slate-700 text-lg font-semibold mt-2">
-                                Contacts
-                            </h2>
+                            <img src="https://readymadeui.com/readymadeui.svg" alt="logo" className="w-36" />
+                            <h2 className="text-slate-700 text-lg font-semibold mt-2">Contacts</h2>
                             <p className="text-sm text-slate-500">Manage your contacts</p>
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <button
-                                onClick={exportToCsv}
-                                className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-sm text-white"
-                            >
-                                Export CSV
-                            </button>
+                            <button onClick={exportToCsv} className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-sm text-white">Export CSV</button>
                         </div>
                     </div>
 
                     {/* Controls */}
                     <div className="flex flex-wrap items-center gap-3 mb-4">
-                        <input
-                            placeholder="Search by name or email"
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            className="px-3 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900 w-full sm:w-64"
-                        />
-                        <select
-                            value={countryFilter}
-                            onChange={e => setCountryFilter(e.target.value)}
-                            className="px-3 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                        >
+                        <input placeholder="Search by name or email" value={search} onChange={e => setSearch(e.target.value)} className="px-3 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900 w-full sm:w-64" />
+                        <select value={countryFilter} onChange={e => setCountryFilter(e.target.value)} className="px-3 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900">
                             <option value="">All countries</option>
-                            {countries.map(c => (
-                                <option key={c.id} value={c.name}>
-                                    {c.name}
-                                </option>
-                            ))}
+                            {countries.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                         </select>
-                        <div className="ml-auto text-sm text-slate-500">
-                            {filtered.length} result{filtered.length !== 1 ? 's' : ''}
-                        </div>
+                        <div className="ml-auto text-sm text-slate-500">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</div>
                     </div>
 
                     {/* Table */}
@@ -256,28 +254,23 @@ export function AdminTable() {
                             <tbody>
                                 {filtered.map(r => (
                                     <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
-                                        <td className="px-3 py-3 text-slate-900">
-                                            {r.first_name} {r.last_name}
-                                        </td>
+                                        <td className="px-3 py-3 text-slate-900">{r.first_name} {r.last_name}</td>
                                         <td className="px-3 py-3 text-slate-700">{r.email}</td>
                                         <td className="px-3 py-3 text-slate-700">{r.mobile_phone}</td>
                                         <td className="px-3 py-3 text-slate-700">{r.country?.name}</td>
                                         <td className="px-3 py-3 text-slate-700">{r.organization?.name}</td>
-                                        <td className="px-3 py-3 text-slate-700">
-                                            {new Date(r.created_at).toLocaleString()}
-                                        </td>
+                                        <td className="px-3 py-3 text-slate-700">{new Date(r.created_at).toLocaleString()}</td>
                                     </tr>
                                 ))}
                                 {filtered.length === 0 && (
                                     <tr>
-                                        <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
-                                            No contacts found
-                                        </td>
+                                        <td colSpan={6} className="px-3 py-6 text-center text-slate-400">No contacts found</td>
                                     </tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
+
                 </div>
             </div>
         </div>
