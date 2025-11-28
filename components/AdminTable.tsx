@@ -18,12 +18,28 @@ type ContactRow = {
     admin_assistant_email: string | null;
     admin_assistant_phone: string | null;
     created_at: string;
+
     organization?: { name: string | null };
     country?: { name: string | null };
+    state?: { name: string | null };
+    city?: { name: string | null };
     department?: { name: string | null };
     specialty?: { name: string | null };
     occupation?: { name: string | null };
     creator?: { full_name: string | null }; // from profiles
+
+    // Investigator profile
+    has_pi_experience: boolean | null;
+    pi_experience_notes: string | null;
+    interested_in_pi_role: boolean | null;
+    pi_interest_notes: string | null;
+    has_subi_experience: boolean | null;
+    subi_experience_notes: string | null;
+    interested_in_subi_role: boolean | null;
+    subi_interest_notes: string | null;
+    gcp_trained: boolean | null;
+    gcp_last_training_date: string | null;
+    inv_notes: string | null;
 };
 
 export function AdminTable() {
@@ -57,7 +73,7 @@ export function AdminTable() {
             const supabase = createClient(url, anon);
 
             try {
-                // 1) Load contacts (include created_by for mapping, but we won't type it in ContactRow)
+                // 1) Load contacts (include created_by for mapping)
                 const { data, error } = await supabase
                     .from('contact')
                     .select(
@@ -77,9 +93,24 @@ export function AdminTable() {
             created_by,
             organization:organization_id ( name ),
             country:country_id ( name ),
+            state:state_id ( name ),
+            city:city_id ( name ),
             department:department_id ( name ),
             specialty:specialty_id ( name ),
-            occupation:occupation_id ( name )
+            occupation:occupation_id ( name ),
+            investigator:contact_investigator_profile (
+              has_pi_experience,
+              pi_experience_notes,
+              interested_in_pi_role,
+              pi_interest_notes,
+              has_subi_experience,
+              subi_experience_notes,
+              interested_in_subi_role,
+              subi_interest_notes,
+              gcp_trained,
+              gcp_last_training_date,
+              notes
+            )
           `
                     )
                     .order('created_at', { ascending: false });
@@ -106,15 +137,21 @@ export function AdminTable() {
                     const mapped: ContactRow[] = (data as any[]).map((r: any) => {
                         const orgRaw = r.organization;
                         const countryRaw = r.country;
+                        const stateRaw = r.state;
+                        const cityRaw = r.city;
                         const deptRaw = r.department;
                         const specRaw = r.specialty;
                         const occRaw = r.occupation;
+                        const invRaw = r.investigator;
 
                         const organization = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw ?? null;
                         const country = Array.isArray(countryRaw) ? countryRaw[0] : countryRaw ?? null;
+                        const state = Array.isArray(stateRaw) ? stateRaw[0] : stateRaw ?? null;
+                        const city = Array.isArray(cityRaw) ? cityRaw[0] : cityRaw ?? null;
                         const department = Array.isArray(deptRaw) ? deptRaw[0] : deptRaw ?? null;
                         const specialty = Array.isArray(specRaw) ? specRaw[0] : specRaw ?? null;
                         const occupation = Array.isArray(occRaw) ? occRaw[0] : occRaw ?? null;
+                        const investigator = Array.isArray(invRaw) ? invRaw[0] : invRaw ?? null;
 
                         const creatorFullName = r.created_by
                             ? profileMap.get(r.created_by) ?? null
@@ -133,12 +170,27 @@ export function AdminTable() {
                             admin_assistant_email: r.admin_assistant_email ?? null,
                             admin_assistant_phone: r.admin_assistant_phone ?? null,
                             created_at: r.created_at ?? new Date().toISOString(),
+
                             organization: organization ? { name: organization.name ?? null } : undefined,
                             country: country ? { name: country.name ?? null } : undefined,
+                            state: state ? { name: state.name ?? null } : undefined,
+                            city: city ? { name: city.name ?? null } : undefined,
                             department: department ? { name: department.name ?? null } : undefined,
                             specialty: specialty ? { name: specialty.name ?? null } : undefined,
                             occupation: occupation ? { name: occupation.name ?? null } : undefined,
                             creator: creatorFullName ? { full_name: creatorFullName } : undefined,
+
+                            has_pi_experience: investigator?.has_pi_experience ?? null,
+                            pi_experience_notes: investigator?.pi_experience_notes ?? null,
+                            interested_in_pi_role: investigator?.interested_in_pi_role ?? null,
+                            pi_interest_notes: investigator?.pi_interest_notes ?? null,
+                            has_subi_experience: investigator?.has_subi_experience ?? null,
+                            subi_experience_notes: investigator?.subi_experience_notes ?? null,
+                            interested_in_subi_role: investigator?.interested_in_subi_role ?? null,
+                            subi_interest_notes: investigator?.subi_interest_notes ?? null,
+                            gcp_trained: investigator?.gcp_trained ?? null,
+                            gcp_last_training_date: investigator?.gcp_last_training_date ?? null,
+                            inv_notes: investigator?.notes ?? null,
                         };
                     });
 
@@ -206,6 +258,8 @@ export function AdminTable() {
             'Mobile Phone',
             'Office Phone',
             'Country',
+            'State/Region',
+            'City',
             'Organization',
             'Department',
             'Specialty',
@@ -214,6 +268,17 @@ export function AdminTable() {
             'Admin Assistant Name',
             'Admin Assistant Email',
             'Admin Assistant Phone',
+            'Has PI Experience',
+            'PI Experience Notes',
+            'Interested in PI Role',
+            'PI Interest Notes',
+            'Has Sub-I Experience',
+            'Sub-I Experience Notes',
+            'Interested in Sub-I Role',
+            'Sub-I Interest Notes',
+            'GCP Trained',
+            'GCP Last Training Date',
+            'Investigator Notes',
             'Created By',
             'Created At',
         ];
@@ -228,6 +293,8 @@ export function AdminTable() {
                 r.mobile_phone ?? '',
                 r.office_phone ?? '',
                 r.country?.name ?? '',
+                r.state?.name ?? '',
+                r.city?.name ?? '',
                 r.organization?.name ?? '',
                 r.department?.name ?? '',
                 r.specialty?.name ?? '',
@@ -236,6 +303,17 @@ export function AdminTable() {
                 r.admin_assistant_name ?? '',
                 r.admin_assistant_email ?? '',
                 r.admin_assistant_phone ?? '',
+                r.has_pi_experience ?? '',
+                r.pi_experience_notes ?? '',
+                r.interested_in_pi_role ?? '',
+                r.pi_interest_notes ?? '',
+                r.has_subi_experience ?? '',
+                r.subi_experience_notes ?? '',
+                r.interested_in_subi_role ?? '',
+                r.subi_interest_notes ?? '',
+                r.gcp_trained ?? '',
+                r.gcp_last_training_date ?? '',
+                r.inv_notes ?? '',
                 r.creator?.full_name ?? '',
                 r.created_at,
             ]
@@ -304,8 +382,15 @@ export function AdminTable() {
 
     return (
         <div className="relative bg-gray-50 min-h-screen py-6 px-4">
-            {/* Logout button */}
-            <div className="absolute right-4 z-50">
+            {/* Top-right buttons: Contact Form + Logout */}
+            <div className="absolute right-4 top-4 z-50 flex gap-2">
+                <button
+                    onClick={() => router.push('/contact')}
+                    className="flex items-center gap-2 px-3 h-10 rounded-full bg-[#0B62C1] text-white text-sm font-medium shadow hover:bg-emerald-500 focus:outline-none"
+                >
+                    Contact Form
+                </button>
+
                 <button
                     onClick={handleLogout}
                     disabled={loggingOut}
@@ -338,8 +423,8 @@ export function AdminTable() {
                 </button>
             </div>
 
-            <div className="max-w-full mx-auto p-6 pt-16">
-                <div className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
+            <div className="max-w-full  mx-auto  p-2 pt-16  sm:p-3 sm:pt-16  md:p-4 md:pt-12  lg:p-6 lg:pt-16 ">
+                <div className="p-4 lg:p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-6">
                         <div>
@@ -348,15 +433,16 @@ export function AdminTable() {
                                 height={160}
                                 src="/Images/icts.jpeg"
                                 alt="ICTS"
-                                className="mb-8 mx-auto block"
+                                className="mb-4 mx-auto block"
                             />
-                            <p className="text-2xl text-slate-500">Manage your contacts</p>
+                            {/* Smaller on mobile, bigger on larger screens */}
+                            <p className="text-sm sm:text-2xl text-slate-500">Manage your contacts</p>
                         </div>
 
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={exportToCsv}
-                                className="px-3 py-2 rounded bg-[#0B62C1] hover:bg-emerald-500 text-sm text-white"
+                                className=" px-2 py-1 text-xs  md:px-3 md:py-2 md:text-sm rounded bg-[#0B62C1] hover:bg-emerald-500  text-white "
                             >
                                 Export CSV
                             </button>
@@ -388,68 +474,189 @@ export function AdminTable() {
                         </div>
                     </div>
 
-                    {/* Table */}
+                    {/* Table – horizontally scrollable */}
                     <div className="overflow-x-auto border border-slate-100 rounded">
-                        <table className="min-w-full text-sm">
+                        <table className="min-w-full text-xs sm:text-sm">
                             <thead className="bg-slate-300">
                                 <tr>
-                                    <th className="px-3 py-3 text-left text-slate-700 font-medium">Name</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 font-medium">
-                                        Academic Title
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Name</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Academic Title</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Email</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Mobile</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Office Phone</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Country</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">State/Region</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">City</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Organization</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Department</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Specialty</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Occupation</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Hospital / Clinic Address
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 font-medium">Email</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 font-medium">Mobile</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 font-medium">Country</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 font-medium">
-                                        Organization
-                                    </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 font-medium">
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
                                         Admin Assistant
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 font-medium">
-                                        Created By
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Admin Assistant Email
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 font-medium">Created</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Admin Assistant Phone
+                                    </th>
+
+                                    {/* Investigator columns */}
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Investigator?
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Has PI Experience
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        PI Experience Notes
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Interested in PI Role
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        PI Interest Notes
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Has Sub-I Experience
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Sub-I Experience Notes
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Interested in Sub-I Role
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Sub-I Interest Notes
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">GCP Trained</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        GCP Last Training Date
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                        Investigator Notes
+                                    </th>
+
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Created By</th>
+                                    <th className="px-3 py-3 text-left text-slate-700 ">Created</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map(r => (
-                                    <tr
-                                        key={r.id}
-                                        className="border-t border-slate-100 hover:bg-slate-50"
-                                    >
-                                        <td className="px-3 py-3 text-slate-900">
-                                            {r.first_name} {r.last_name}
-                                        </td>
-                                        <td className="px-3 py-3 text-slate-700">
-                                            {r.academic_title ?? ''}
-                                        </td>
-                                        <td className="px-3 py-3 text-slate-700">{r.email}</td>
-                                        <td className="px-3 py-3 text-slate-700">{r.mobile_phone}</td>
-                                        <td className="px-3 py-3 text-slate-700">{r.country?.name}</td>
-                                        <td className="px-3 py-3 text-slate-700">
-                                            {r.organization?.name}
-                                        </td>
-                                        <td className="px-3 py-3 text-slate-700">
-                                            {r.admin_assistant_name || r.admin_assistant_email
-                                                ? `${r.admin_assistant_name ?? ''}${r.admin_assistant_email
-                                                    ? ` (${r.admin_assistant_email})`
-                                                    : ''
-                                                }`
-                                                : ''}
-                                        </td>
-                                        <td className="px-3 py-3 text-slate-700">
-                                            {r.creator?.full_name || ''}
-                                        </td>
-                                        <td className="px-3 py-3 text-slate-700">
-                                            {new Date(r.created_at).toLocaleString()}
-                                        </td>
-                                    </tr>
-                                ))}
+                                {filtered.map(r => {
+                                    const isInvestigator =
+                                        r.has_pi_experience ||
+                                        r.interested_in_pi_role ||
+                                        r.has_subi_experience ||
+                                        r.interested_in_subi_role ||
+                                        r.gcp_trained ||
+                                        !!r.inv_notes;
+
+                                    return (
+                                        <tr
+                                            key={r.id}
+                                            className="border-t border-slate-100 hover:bg-slate-50"
+                                        >
+                                            <td className="px-3 py-3 text-slate-900 whitespace-nowrap">
+                                                {r.first_name} {r.last_name}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.academic_title ?? ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{r.email}</td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.mobile_phone}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.office_phone}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.country?.name}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.state?.name}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.city?.name}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.organization?.name}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.department?.name}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.specialty?.name}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.occupation?.name}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700">
+                                                {r.hospital_clinic_address}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.admin_assistant_name ?? ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.admin_assistant_email ?? ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.admin_assistant_phone ?? ''}
+                                            </td>
+
+                                            {/* Investigator */}
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {isInvestigator ? 'Yes' : 'No'}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.has_pi_experience ? 'Yes' : ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700">
+                                                {r.pi_experience_notes ?? ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.interested_in_pi_role ? 'Yes' : ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700">
+                                                {r.pi_interest_notes ?? ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.has_subi_experience ? 'Yes' : ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700">
+                                                {r.subi_experience_notes ?? ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.interested_in_subi_role ? 'Yes' : ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700">
+                                                {r.subi_interest_notes ?? ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.gcp_trained ? 'Yes' : ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.gcp_last_training_date ?? ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700">
+                                                {r.inv_notes ?? ''}
+                                            </td>
+
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.creator?.full_name || ''}
+                                            </td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {new Date(r.created_at).toLocaleString()}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                                 {filtered.length === 0 && (
                                     <tr>
                                         <td
-                                            colSpan={9}
+                                            colSpan={32}
                                             className="px-3 py-6 text-center text-slate-400"
                                         >
                                             No contacts found

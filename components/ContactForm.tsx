@@ -9,6 +9,7 @@ import Image from 'next/image';
 import { useLoader } from './LoaderProvider';
 import { useToast } from './Toast';
 
+
 type Option = { id: number; name: string };
 
 type FormValues = {
@@ -56,6 +57,28 @@ const steps: { id: TabId; label: string }[] = [
 ];
 
 export function ContactForm() {
+    const [isAdmin, setIsAdmin] = useState(false);;
+    useEffect(() => {
+        const loadProfile = async () => {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const session = sessionData.session;
+            if (!session) return;
+
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('is_admin')
+                .eq('id', session.user.id)
+                .maybeSingle();
+
+            if (profile?.is_admin) {
+                setIsAdmin(true);
+            }
+        };
+
+        loadProfile();
+    }, []);
+
+
     const {
         register,
         handleSubmit,
@@ -344,7 +367,19 @@ export function ContactForm() {
     return (
         <div className="relative bg-gray-50 min-h-screen py-6 px-4">
             {/* Logout button */}
-            <div className="absolute top-4 right-4 z-50">
+            <div className="absolute top-4 right-4 z-50 flex gap-2">
+                {/* Admin button – only for admins */}
+                {isAdmin && (
+                    <button
+                        type="button"
+                        onClick={() => router.push('/admin')}
+                        className="flex items-center gap-2 px-3 h-10 rounded-full bg-[#0B62C1] text-white text-sm font-medium shadow hover:bg-emerald-500 focus:outline-none"
+                    >
+                        Admin
+                    </button>
+                )}
+
+                {/* Logout button – always visible */}
                 <button
                     onClick={handleLogout}
                     disabled={loggingOut}
@@ -376,6 +411,7 @@ export function ContactForm() {
                     </span>
                 </button>
             </div>
+
 
             <div className="max-w-4xl mx-auto p-4 sm:p-8">
                 {/* Card */}
