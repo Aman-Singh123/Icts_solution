@@ -9,30 +9,44 @@ import Image from 'next/image';
 import { useLoader } from './LoaderProvider';
 import { useToast } from './Toast';
 
-
 type Option = { id: number; name: string };
 
 type FormValues = {
+    // Contact details
+    title: string;
     first_name: string;
     last_name: string;
     email: string;
     mobile_phone: string;
     office_phone: string;
-
     academic_title: string;
-    hospital_clinic_address: string;
+
+    // Status
+    record_status: 'Active' | 'Inactive' | '';
+
+    // Organisation / address details
+    address_line_1: string;
+    address_line_2: string;
+    postal_code: string;
+    hospital_clinic_address: string; // derived when saving
+
+    org_type: 'Hospital' | 'Clinic' | 'Other' | '';
+    org_type_other: string;
+
     admin_assistant_name: string;
     admin_assistant_email: string;
     admin_assistant_phone: string;
 
-    country_id: number | '';
-    state_id: number | '';
-    city_id: number | '';
-    organization_id: number | '';
-    specialty_id: number | '';
-    occupation_id: number | '';
-    department_id: number | '';
+    // Combo-box text values for lookups
+    organization_name: string;
+    specialty_name: string;
+    occupation_name: string;
+    department_name: string;
+    country_name: string;
+    state_name: string;
+    city_name: string;
 
+    // Investigator / specialty section
     has_pi_experience: boolean;
     pi_experience_notes: string;
     interested_in_pi_role: boolean;
@@ -47,17 +61,18 @@ type FormValues = {
     is_investigator: boolean;
 };
 
-type TabId = 'contact' | 'professional' | 'investigator' | 'admin';
+type TabId = 'contact' | 'specialty' | 'organisation' | 'admin';
 
 const steps: { id: TabId; label: string }[] = [
     { id: 'contact', label: 'Contact Details' },
-    { id: 'professional', label: 'Professional & Location' },
-    { id: 'investigator', label: 'Investigator Profile' },
-    { id: 'admin', label: 'Admin Assistant' },
+    { id: 'specialty', label: 'Specialty & Role' },
+    { id: 'organisation', label: 'Organisation' },
+    { id: 'admin', label: 'Secretary / Administrator' },
 ];
 
 export function ContactForm() {
-    const [isAdmin, setIsAdmin] = useState(false);;
+    const [isAdmin, setIsAdmin] = useState(false);
+
     useEffect(() => {
         const loadProfile = async () => {
             const { data: sessionData } = await supabase.auth.getSession();
@@ -78,14 +93,43 @@ export function ContactForm() {
         loadProfile();
     }, []);
 
-
     const {
         register,
         handleSubmit,
         watch,
         reset,
+        formState: { errors },
     } = useForm<FormValues>({
         defaultValues: {
+            title: '',
+            first_name: '',
+            last_name: '',
+            email: '',
+            mobile_phone: '',
+            office_phone: '',
+            academic_title: '',
+            record_status: 'Active',
+
+            address_line_1: '',
+            address_line_2: '',
+            postal_code: '',
+            hospital_clinic_address: '',
+
+            org_type: '',
+            org_type_other: '',
+
+            admin_assistant_name: '',
+            admin_assistant_email: '',
+            admin_assistant_phone: '',
+
+            organization_name: '',
+            specialty_name: '',
+            occupation_name: '',
+            department_name: '',
+            country_name: '',
+            state_name: '',
+            city_name: '',
+
             has_pi_experience: false,
             interested_in_pi_role: false,
             has_subi_experience: false,
@@ -99,9 +143,7 @@ export function ContactForm() {
     const { showToast } = useToast();
     const { showLoader, hideLoader } = useLoader();
 
-    // we now track which step we're on (0..3)
     const [activeStep, setActiveStep] = useState(0);
-
     const currentTab = steps[activeStep].id;
 
     const [countries, setCountries] = useState<Option[]>([]);
@@ -115,8 +157,9 @@ export function ContactForm() {
     const [message, setMessage] = useState('');
     const [loggingOut, setLoggingOut] = useState(false);
 
-    const selectedCountryId = watch('country_id');
-    const selectedStateId = watch('state_id');
+    // watch combo text values for dependent loading
+    const countryName = watch('country_name');
+    const stateName = watch('state_name');
     const isInvestigator = watch('is_investigator');
 
     // --- Load dropdown data ---
@@ -144,17 +187,27 @@ export function ContactForm() {
         loadStatic();
     }, [showToast]);
 
+    // Load states based on typed/selected country name
     useEffect(() => {
         const loadStates = async () => {
             try {
-                if (!selectedCountryId) {
+                if (!countryName) {
                     setStates([]);
                     return;
                 }
+
+                const matchCountry = countries.find(
+                    c => c.name.toLowerCase() === countryName.toLowerCase()
+                );
+                if (!matchCountry) {
+                    setStates([]);
+                    return;
+                }
+
                 const { data } = await supabase
                     .from('state_region')
                     .select('id, name')
-                    .eq('country_id', selectedCountryId)
+                    .eq('country_id', matchCountry.id)
                     .order('name');
                 setStates(data ?? []);
             } catch (err) {
@@ -164,19 +217,29 @@ export function ContactForm() {
             }
         };
         loadStates();
-    }, [selectedCountryId, showToast]);
+    }, [countryName, countries, showToast]);
 
+    // Load cities based on typed/selected state name
     useEffect(() => {
         const loadCities = async () => {
             try {
-                if (!selectedStateId) {
+                if (!stateName) {
                     setCities([]);
                     return;
                 }
+
+                const matchState = states.find(
+                    s => s.name.toLowerCase() === stateName.toLowerCase()
+                );
+                if (!matchState) {
+                    setCities([]);
+                    return;
+                }
+
                 const { data } = await supabase
                     .from('city')
                     .select('id, name')
-                    .eq('state_id', selectedStateId)
+                    .eq('state_id', matchState.id)
                     .order('name');
                 setCities(data ?? []);
             } catch (err) {
@@ -186,7 +249,7 @@ export function ContactForm() {
             }
         };
         loadCities();
-    }, [selectedStateId, showToast]);
+    }, [stateName, states, showToast]);
 
     // --- Step navigation (does NOT save) ---
     const goNext = () => {
@@ -195,6 +258,49 @@ export function ContactForm() {
 
     const goPrev = () => {
         setActiveStep(prev => Math.max(prev - 1, 0));
+    };
+
+    const goToStep = (index: number) => {
+        setActiveStep(index);
+    };
+
+    // helper to lookup or create by name in a table
+    const ensureLookup = async (
+        table: string,
+        name: string | undefined,
+        extra: Record<string, any> = {}
+    ): Promise<number | null> => {
+        const trimmed = name?.trim();
+        if (!trimmed) return null;
+
+        // Try to find existing
+        const { data: existing, error: selError } = await supabase
+            .from(table)
+            .select('id, name')
+            .ilike('name', trimmed)
+            .maybeSingle();
+
+        if (selError) {
+            console.error(`Lookup failed on ${table}`, selError);
+        }
+
+        if (existing?.id) {
+            return existing.id as number;
+        }
+
+        // Insert new
+        const { data: inserted, error: insError } = await supabase
+            .from(table)
+            .insert({ name: trimmed, ...extra })
+            .select('id')
+            .single();
+
+        if (insError) {
+            console.error(`Insert failed on ${table}`, insError);
+            throw insError;
+        }
+
+        return inserted?.id ?? null;
     };
 
     // --- Submit handler (only called when clicking Save Contact on last step) ---
@@ -214,7 +320,7 @@ export function ContactForm() {
                 const { data: existing, error: existingError } = await supabase
                     .from('contact')
                     .select('id')
-                    .ilike('email', trimmedEmail) // case-insensitive
+                    .ilike('email', trimmedEmail)
                     .maybeSingle();
 
                 if (existingError) {
@@ -261,34 +367,66 @@ export function ContactForm() {
 
             const userId = session.user.id;
 
-            // 3) Insert contact WITH created_by and all fields
+            // 3) Resolve or create lookup IDs from combo-box names
+            const countryId = await ensureLookup('country', rest.country_name);
+            const stateId = await ensureLookup('state_region', rest.state_name, {
+                country_id: countryId,
+            });
+            const cityId = await ensureLookup('city', rest.city_name, {
+                state_id: stateId,
+            });
+
+            const organizationId = await ensureLookup('organization', rest.organization_name);
+            const departmentId = await ensureLookup('department', rest.department_name);
+            const specialtyId = await ensureLookup('specialty', rest.specialty_name);
+            const occupationId = await ensureLookup('occupation', rest.occupation_name);
+
+            // 4) Build address string from address_line_1/2 + postal_code + org type
+            let orgTypeLabel: string | null = null;
+            if (rest.org_type) {
+                orgTypeLabel =
+                    rest.org_type === 'Other'
+                        ? rest.org_type_other || 'Other'
+                        : rest.org_type;
+            }
+
+            const addressParts: string[] = [];
+            if (orgTypeLabel) addressParts.push(`Org type: ${orgTypeLabel}`);
+            if (rest.address_line_1) addressParts.push(rest.address_line_1);
+            if (rest.address_line_2) addressParts.push(rest.address_line_2);
+            if (rest.postal_code) addressParts.push(`Postal code: ${rest.postal_code}`);
+
+            const fullAddress = addressParts.length > 0 ? addressParts.join('\n') : null;
+
+            // 5) Insert contact WITH created_by and all fields
             const { data: contactData, error: contactError } = await supabase
                 .from('contact')
                 .insert({
+                    title: rest.title || null, // requires `title` column
                     first_name: rest.first_name,
                     last_name: rest.last_name,
                     email: trimmedEmail,
                     mobile_phone: rest.mobile_phone || null,
                     office_phone: rest.office_phone || null,
                     academic_title: rest.academic_title || null,
-                    hospital_clinic_address: rest.hospital_clinic_address || null,
+                    hospital_clinic_address: fullAddress,
                     admin_assistant_name: rest.admin_assistant_name || null,
                     admin_assistant_email: rest.admin_assistant_email || null,
                     admin_assistant_phone: rest.admin_assistant_phone || null,
-                    country_id: rest.country_id || null,
-                    state_id: rest.state_id || null,
-                    city_id: rest.city_id || null,
-                    organization_id: rest.organization_id || null,
-                    specialty_id: rest.specialty_id || null,
-                    occupation_id: rest.occupation_id || null,
-                    department_id: rest.department_id || null,
+                    country_id: countryId,
+                    state_id: stateId,
+                    city_id: cityId,
+                    organization_id: organizationId,
+                    specialty_id: specialtyId,
+                    occupation_id: occupationId,
+                    department_id: departmentId,
+                    record_status: (rest.record_status || 'Active') as 'Active' | 'Inactive', // requires column in DB
                     created_by: userId,
                 })
                 .select('id')
                 .single();
 
             if (contactError || !contactData) {
-                // extra safety: handle unique constraint here as well
                 const rawMsg = contactError?.message || '';
                 let msg = contactError?.message || 'Error creating contact.';
 
@@ -303,7 +441,7 @@ export function ContactForm() {
                 return;
             }
 
-            // 4) Investigator profile if flagged
+            // 6) Investigator profile if flagged
             if (is_investigator) {
                 const { error: invError } = await supabase
                     .from('contact_investigator_profile')
@@ -335,7 +473,7 @@ export function ContactForm() {
 
             setMessage('Contact saved successfully.');
             showToast('Contact saved successfully.', 'success');
-            reset();
+            reset({ record_status: 'Active' } as any);
             setActiveStep(0);
         } catch (err: any) {
             console.error('Save failed', err);
@@ -366,7 +504,7 @@ export function ContactForm() {
 
     return (
         <div className="relative bg-gray-50 min-h-screen py-6 px-4">
-            {/* Logout button */}
+            {/* Top-right buttons */}
             <div className="absolute top-4 right-4 z-50 flex gap-2">
                 {/* Admin button – only for admins */}
                 {isAdmin && (
@@ -412,7 +550,6 @@ export function ContactForm() {
                 </button>
             </div>
 
-
             <div className="max-w-4xl mx-auto p-4 sm:p-8">
                 {/* Card */}
                 <div className="p-6 sm:p-8 rounded-2xl bg-white border border-gray-200 shadow-sm">
@@ -426,25 +563,27 @@ export function ContactForm() {
                         />
                         <h3 className="text-slate-600 text-2xl mt-3">Contact Form</h3>
                         <p className="text-xs text-slate-500 mt-1">
-                            Use Next / Previous to move between sections. Data is saved only when you click
-                            &quot;Save Contact&quot; on the last step.
+                            Use the tabs or Next / Previous to move between sections. Data is saved only
+                            when you click &quot;Save Contact&quot; on the last step.
                         </p>
                     </div>
 
-                    {/* Step header (like tabs, but main navigation is via Next/Previous) */}
+                    {/* Step header – TABS (clickable) */}
                     <div className="border-b border-slate-200 mb-4 flex gap-2 flex-wrap">
                         {steps.map((step, index) => (
-                            <div
+                            <button
                                 key={step.id}
+                                type="button"
+                                onClick={() => goToStep(index)}
                                 className={`px-3 py-2 text-xs sm:text-sm rounded-t-md border-b-2
                   ${index === activeStep
                                         ? 'border-blue-600 text-blue-600 bg-blue-50'
-                                        : 'border-transparent text-slate-400'
+                                        : 'border-transparent text-slate-400 hover:text-slate-700'
                                     }
                 `}
                             >
                                 {step.label}
-                            </div>
+                            </button>
                         ))}
                     </div>
 
@@ -452,21 +591,23 @@ export function ContactForm() {
                         {/* STEP: Contact Details */}
                         {currentTab === 'contact' && (
                             <section className="space-y-3">
-                                <h3 className="font-semibold text-sm">Contact Details</h3>
+                                <h3 className="font-semibold text-sm">Principal Contact</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div>
-                                        <label className="block text-xs mb-1">First Name *</label>
+                                        <label className="block text-xs mb-1">Title </label>
                                         <input
-                                            {...register('first_name', { required: true })}
+                                            list="titleOptions"
+                                            {...register('title')}
                                             className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                            placeholder="e.g. Dr, Prof, Mr, Ms"
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs mb-1">Last Name *</label>
-                                        <input
-                                            {...register('last_name', { required: true })}
-                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                                        />
+                                        <datalist id="titleOptions">
+                                            <option value="Dr" />
+                                            <option value="Prof" />
+                                            <option value="Mr" />
+                                            <option value="Mrs" />
+                                            <option value="Ms" />
+                                        </datalist>
                                     </div>
                                     <div>
                                         <label className="block text-xs mb-1">Academic / Work Title</label>
@@ -476,8 +617,34 @@ export function ContactForm() {
                                             placeholder="e.g. Consultant Physician, Professor"
                                         />
                                     </div>
+
                                     <div>
-                                        <label className="block text-xs mb-1">Email</label>
+                                        <label className="block text-xs mb-1">First Name *</label>
+                                        <input
+                                            {...register('first_name', { required: 'First name is required' })}
+                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                        />
+                                        {errors.first_name && (
+                                            <p className="text-[11px] text-red-500 mt-1">
+                                                {errors.first_name.message}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs mb-1">Last Name *</label>
+                                        <input
+                                            {...register('last_name', { required: 'Last name is required' })}
+                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                        />
+                                        {errors.last_name && (
+                                            <p className="text-[11px] text-red-500 mt-1">
+                                                {errors.last_name.message}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs mb-1">Email address</label>
                                         <input
                                             type="email"
                                             {...register('email')}
@@ -485,160 +652,131 @@ export function ContactForm() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs mb-1">Mobile Phone</label>
+                                        <label className="block text-xs mb-1">Office Number</label>
                                         <input
-                                            {...register('mobile_phone')}
+                                            {...register("office_phone", {
+                                                pattern: {
+                                                    value: /^[0-9]*$/,
+                                                    message: "Digits only",
+                                                },
+                                            })}
+                                            inputMode="numeric"
+                                            onInput={(e) => {
+                                                e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "");
+                                            }}
                                             className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
                                         />
+                                        {errors.office_phone && (
+                                            <p className="text-[11px] text-red-500 mt-1">
+                                                {errors.office_phone.message}
+                                            </p>
+                                        )}
                                     </div>
+
                                     <div>
-                                        <label className="block text-xs mb-1">Office Phone</label>
+                                        <label className="block text-xs mb-1">Mobile Number</label>
                                         <input
-                                            {...register('office_phone')}
+                                            {...register("mobile_phone", {
+                                                pattern: {
+                                                    value: /^[0-9]*$/,
+                                                    message: "Digits only",
+                                                },
+                                            })} 
+                                            inputMode="numeric"
+                                            onInput={(e) => {
+                                                e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "");
+                                            }}
                                             className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
                                         />
+                                        {errors.mobile_phone && (
+                                            <p className="text-[11px] text-red-500 mt-1">
+                                                {errors.mobile_phone.message}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs mb-1">Record Status</label>
+                                        <select
+                                            {...register('record_status')}
+                                            disabled={!isAdmin}
+                                            className={`w-full px-2 py-2 rounded border text-sm ${isAdmin
+                                                    ? 'bg-slate-100 border-slate-300 text-slate-900'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
+                                                }`}
+                                        >
+                                            <option value="Active">Active</option>
+                                            <option value="Inactive">Inactive</option>
+                                        </select>
+                                        {!isAdmin && (
+                                            <p className="text-[10px] text-slate-400 mt-1">
+                                                Only admin can change this. Default is Active.
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             </section>
                         )}
 
-                        {/* STEP: Professional & Location */}
-                        {currentTab === 'professional' && (
+                        {/* STEP: Specialty & Role (Investigator) */}
+                        {currentTab === 'specialty' && (
                             <section className="space-y-3">
-                                <h3 className="font-semibold text-sm">Professional & Location</h3>
+                                <h3 className="font-semibold text-sm">Specialty & Investigator Role</h3>
+
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div className="md:col-span-2">
-                                        <label className="block text-xs mb-1">Hospital / Clinic Address</label>
-                                        <textarea
-                                            {...register('hospital_clinic_address')}
+                                    <div>
+                                        <label className="block text-xs mb-1">Occupation </label>
+                                        <input
+                                            list="occupationOptions"
+                                            {...register('occupation_name')}
                                             className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                                            rows={2}
+                                            placeholder="Type or select occupation"
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs mb-1">Organization</label>
-                                        <select
-                                            {...register('organization_id')}
-                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                                        >
-                                            <option value="">-- Select --</option>
-                                            {orgs.map(o => (
-                                                <option key={o.id} value={o.id}>
-                                                    {o.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs mb-1">Department</label>
-                                        <select
-                                            {...register('department_id')}
-                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                                        >
-                                            <option value="">-- Select --</option>
-                                            {departments.map(d => (
-                                                <option key={d.id} value={d.id}>
-                                                    {d.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs mb-1">Occupation</label>
-                                        <select
-                                            {...register('occupation_id')}
-                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                                        >
-                                            <option value="">-- Select --</option>
+                                        <datalist id="occupationOptions">
                                             {occupations.map(o => (
-                                                <option key={o.id} value={o.id}>
-                                                    {o.name}
-                                                </option>
+                                                <option key={o.id} value={o.name} />
                                             ))}
-                                        </select>
+                                        </datalist>
                                     </div>
                                     <div>
-                                        <label className="block text-xs mb-1">Specialty</label>
-                                        <select
-                                            {...register('specialty_id')}
+                                        <label className="block text-xs mb-1">Specialty </label>
+                                        <input
+                                            list="specialtyOptions"
+                                            {...register('specialty_name')}
                                             className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                                        >
-                                            <option value="">-- Select --</option>
+                                            placeholder="Type or select specialty"
+                                        />
+                                        <datalist id="specialtyOptions">
                                             {specialties.map(s => (
-                                                <option key={s.id} value={s.id}>
-                                                    {s.name}
-                                                </option>
+                                                <option key={s.id} value={s.name} />
                                             ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs mb-1">Country</label>
-                                        <select
-                                            {...register('country_id')}
-                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                                        >
-                                            <option value="">-- Select --</option>
-                                            {countries.map(c => (
-                                                <option key={c.id} value={c.id}>
-                                                    {c.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs mb-1">State / Region</label>
-                                        <select
-                                            {...register('state_id')}
-                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                                        >
-                                            <option value="">-- Select --</option>
-                                            {states.map(s => (
-                                                <option key={s.id} value={s.id}>
-                                                    {s.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs mb-1">City</label>
-                                        <select
-                                            {...register('city_id')}
-                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                                        >
-                                            <option value="">-- Select --</option>
-                                            {cities.map(c => (
-                                                <option key={c.id} value={c.id}>
-                                                    {c.name}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        </datalist>
                                     </div>
                                 </div>
-                            </section>
-                        )}
 
-                        {/* STEP: Investigator */}
-                        {currentTab === 'investigator' && (
-                            <section className="space-y-3">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 mt-2">
                                     <input type="checkbox" {...register('is_investigator')} />
                                     <span className="text-sm">This contact is an investigator</span>
                                 </div>
 
                                 {isInvestigator && (
-                                    <div className="space-y-3 border border-slate-200 rounded p-3">
-                                        <h3 className="font-semibold text-sm">Investigator Profile</h3>
-
+                                    <div className="space-y-3 border border-slate-200 rounded p-3 mt-2">
+                                        <h4 className="font-semibold text-xs">PI Role</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <div>
-                                                <label className="block text-xs mb-1">Has PI experience?</label>
+                                            <div className="flex items-center gap-2">
                                                 <input type="checkbox" {...register('has_pi_experience')} />
+                                                <span className="text-xs">PI Role experience (Yes/No)</span>
                                             </div>
-                                            <div>
-                                                <label className="block text-xs mb-1">Interested in PI role?</label>
+                                            <div className="flex items-center gap-2">
                                                 <input type="checkbox" {...register('interested_in_pi_role')} />
+                                                <span className="text-xs">Interested in PI Role (Yes/No)</span>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs mb-1">PI Role interest (Text)</label>
+                                                <textarea
+                                                    {...register('pi_interest_notes')}
+                                                    className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                                />
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="block text-xs mb-1">PI experience notes</label>
@@ -647,21 +785,24 @@ export function ContactForm() {
                                                     className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
                                                 />
                                             </div>
+                                        </div>
+
+                                        <h4 className="font-semibold text-xs mt-2">Sub-I Role</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <input type="checkbox" {...register('has_subi_experience')} />
+                                                <span className="text-xs">Sub-I Role experience (Yes/No)</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <input type="checkbox" {...register('interested_in_subi_role')} />
+                                                <span className="text-xs">Interested in Sub-I Role (Yes/No)</span>
+                                            </div>
                                             <div className="md:col-span-2">
-                                                <label className="block text-xs mb-1">PI interest notes</label>
+                                                <label className="block text-xs mb-1">Sub-I Role interest (Text)</label>
                                                 <textarea
-                                                    {...register('pi_interest_notes')}
+                                                    {...register('subi_interest_notes')}
                                                     className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
                                                 />
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs mb-1">Has Sub-I experience?</label>
-                                                <input type="checkbox" {...register('has_subi_experience')} />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs mb-1">Interested in Sub-I role?</label>
-                                                <input type="checkbox" {...register('interested_in_subi_role')} />
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="block text-xs mb-1">Sub-I experience notes</label>
@@ -670,17 +811,13 @@ export function ContactForm() {
                                                     className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
                                                 />
                                             </div>
-                                            <div className="md:col-span-2">
-                                                <label className="block text-xs mb-1">Sub-I interest notes</label>
-                                                <textarea
-                                                    {...register('subi_interest_notes')}
-                                                    className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
-                                                />
-                                            </div>
+                                        </div>
 
-                                            <div>
-                                                <label className="block text-xs mb-1">GCP trained?</label>
+                                        <h4 className="font-semibold text-xs mt-2">GCP Training</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div className="flex items-center gap-2">
                                                 <input type="checkbox" {...register('gcp_trained')} />
+                                                <span className="text-xs">GCP trained?</span>
                                             </div>
                                             <div>
                                                 <label className="block text-xs mb-1">Last GCP training date</label>
@@ -691,7 +828,7 @@ export function ContactForm() {
                                                 />
                                             </div>
                                             <div className="md:col-span-2">
-                                                <label className="block text-xs mb-1">Notes</label>
+                                                <label className="block text-xs mb-1">Investigator notes</label>
                                                 <textarea
                                                     {...register('inv_notes')}
                                                     className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
@@ -703,20 +840,163 @@ export function ContactForm() {
                             </section>
                         )}
 
-                        {/* STEP: Admin Assistant */}
+                        {/* STEP: Organisation */}
+                        {currentTab === 'organisation' && (
+                            <section className="space-y-3">
+                                <h3 className="font-semibold text-sm">Organisation</h3>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs mb-1">Organisation Name </label>
+                                        <input
+                                            list="organizationOptions"
+                                            {...register('organization_name')}
+                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                            placeholder="Type or select organisation"
+                                        />
+                                        <datalist id="organizationOptions">
+                                            {orgs.map(o => (
+                                                <option key={o.id} value={o.name} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+
+                                    {/* Org Type radio */}
+                                    <div className="md:col-span-1">
+                                        <label className="block text-xs mb-1">Hospital / Clinic / Other</label>
+                                        <div className="flex flex-col gap-1 text-xs text-slate-700">
+                                            <label className="inline-flex items-center gap-1">
+                                                <input
+                                                    type="radio"
+                                                    value="Hospital"
+                                                    {...register('org_type')}
+                                                />
+                                                <span>Hospital</span>
+                                            </label>
+                                            <label className="inline-flex items-center gap-1">
+                                                <input
+                                                    type="radio"
+                                                    value="Clinic"
+                                                    {...register('org_type')}
+                                                />
+                                                <span>Clinic</span>
+                                            </label>
+                                            <label className="inline-flex items-center gap-1">
+                                                <input
+                                                    type="radio"
+                                                    value="Other"
+                                                    {...register('org_type')}
+                                                />
+                                                <span>Other</span>
+                                            </label>
+                                        </div>
+                                        {watch('org_type') === 'Other' && (
+                                            <input
+                                                {...register('org_type_other')}
+                                                className="mt-2 w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                                placeholder="Please specify"
+                                            />
+                                        )}
+                                    </div>
+
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs mb-1">Address Line 1</label>
+                                        <input
+                                            {...register('address_line_1')}
+                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs mb-1">Address Line 2</label>
+                                        <input
+                                            {...register('address_line_2')}
+                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs mb-1">City </label>
+                                        <input
+                                            list="cityOptions"
+                                            {...register('city_name')}
+                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                            placeholder="Type or select city"
+                                        />
+                                        <datalist id="cityOptions">
+                                            {cities.map(c => (
+                                                <option key={c.id} value={c.name} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs mb-1">State / Region </label>
+                                        <input
+                                            list="stateOptions"
+                                            {...register('state_name')}
+                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                            placeholder="Type or select state"
+                                        />
+                                        <datalist id="stateOptions">
+                                            {states.map(s => (
+                                                <option key={s.id} value={s.name} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs mb-1">Country </label>
+                                        <input
+                                            list="countryOptionsCombo"
+                                            {...register('country_name')}
+                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                            placeholder="Type or select country"
+                                        />
+                                        <datalist id="countryOptionsCombo">
+                                            {countries.map(c => (
+                                                <option key={c.id} value={c.name} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs mb-1">Zip / Postal Code</label>
+                                        <input
+                                            {...register('postal_code')}
+                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs mb-1">Department </label>
+                                        <input
+                                            list="departmentOptions"
+                                            {...register('department_name')}
+                                            className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
+                                            placeholder="Type or select department"
+                                        />
+                                        <datalist id="departmentOptions">
+                                            {departments.map(d => (
+                                                <option key={d.id} value={d.name} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                </div>
+                            </section>
+                        )}
+
+                        {/* STEP: Secretary / Administrator */}
                         {currentTab === 'admin' && (
                             <section className="space-y-3">
-                                <h3 className="font-semibold text-sm">Admin Assistant Details</h3>
+                                <h3 className="font-semibold text-sm">Secretary / Administrator Details</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div>
-                                        <label className="block text-xs mb-1">Admin Assistant Name</label>
+                                        <label className="block text-xs mb-1">Admin Asst. Name</label>
                                         <input
                                             {...register('admin_assistant_name')}
                                             className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs mb-1">Admin Assistant Email</label>
+                                        <label className="block text-xs mb-1">Email of Admin Asst.</label>
                                         <input
                                             type="email"
                                             {...register('admin_assistant_email')}
@@ -724,11 +1004,22 @@ export function ContactForm() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs mb-1">Admin Assistant Phone</label>
+                                        <label className="block text-xs mb-1">Phone number of Admin Asst. (digits only)</label>
                                         <input
-                                            {...register('admin_assistant_phone')}
+                                            {...register('admin_assistant_phone', {
+                                                pattern: {
+                                                    value: /^[0-9]*$/,
+                                                    message: 'Digits only',
+                                                },
+                                            })}
+                                            inputMode="numeric"
                                             className="w-full px-2 py-2 rounded bg-slate-100 border border-slate-300 text-sm text-slate-900"
                                         />
+                                        {errors.admin_assistant_phone && (
+                                            <p className="text-[11px] text-red-500 mt-1">
+                                                {errors.admin_assistant_phone.message}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             </section>

@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { useToast } from './Toast';
 
 type ContactRow = {
     id: number;
@@ -44,6 +45,7 @@ type ContactRow = {
 
 export function AdminTable() {
     const router = useRouter();
+    const { showToast } = useToast();
 
     const [rows, setRows] = useState<ContactRow[]>([]);
     const [filtered, setFiltered] = useState<ContactRow[]>([]);
@@ -248,6 +250,7 @@ export function AdminTable() {
         setFiltered(data);
     }, [rows, search, countryFilter]);
 
+    // ---------- EXPORT CSV ----------
     const exportToCsv = () => {
         const header = [
             'ID',
@@ -331,6 +334,89 @@ export function AdminTable() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    };
+
+    // ---------- COPY EMAILS (filtered) ----------
+    const copyEmails = async () => {
+        const emails = filtered
+            .map(r => (r.email || '').trim())
+            .filter(e => e.length > 0);
+
+        if (emails.length === 0) {
+            showToast('No emails in current filter to copy.', 'error');
+            return;
+        }
+
+        const text = emails.join('; '); // good for Outlook / most email clients
+
+        try {
+            await navigator.clipboard.writeText(text);
+            showToast(`Copied ${emails.length} email(s) to clipboard.`, 'success');
+        } catch (err) {
+            console.error('Clipboard error', err);
+            showToast('Could not copy emails to clipboard.', 'error');
+        }
+    };
+
+    // ---------- COPY TABLE FOR EXCEL ----------
+    const copyTableForExcel = async () => {
+        if (filtered.length === 0) {
+            showToast('No rows to copy for current filter.', 'error');
+            return;
+        }
+
+        const header = [
+            'First Name',
+            'Last Name',
+            'Academic Title',
+            'Email',
+            'Mobile',
+            'Office Phone',
+            'Country',
+            'State/Region',
+            'City',
+            'Organization',
+            'Department',
+            'Specialty',
+            'Occupation',
+            'Admin Assistant',
+            'Admin Assistant Email',
+            'Admin Assistant Phone',
+        ];
+
+        const lines = filtered.map(r => {
+            const adminSummary = r.admin_assistant_name ?? '';
+            return [
+                r.first_name,
+                r.last_name,
+                r.academic_title ?? '',
+                r.email ?? '',
+                r.mobile_phone ?? '',
+                r.office_phone ?? '',
+                r.country?.name ?? '',
+                r.state?.name ?? '',
+                r.city?.name ?? '',
+                r.organization?.name ?? '',
+                r.department?.name ?? '',
+                r.specialty?.name ?? '',
+                r.occupation?.name ?? '',
+                adminSummary,
+                r.admin_assistant_email ?? '',
+                r.admin_assistant_phone ?? '',
+            ]
+                .map(v => String(v).replace(/\t/g, ' ')) // avoid breaking TSV
+                .join('\t');
+        });
+
+        const tsv = [header.join('\t'), ...lines].join('\n');
+
+        try {
+            await navigator.clipboard.writeText(tsv);
+            showToast('Table copied. Paste directly into Excel / Sheets.', 'success');
+        } catch (err) {
+            console.error('Clipboard error', err);
+            showToast('Could not copy table to clipboard.', 'error');
+        }
     };
 
     const handleLogout = async () => {
@@ -423,7 +509,7 @@ export function AdminTable() {
                 </button>
             </div>
 
-            <div className="max-w-full  mx-auto  p-2 pt-16  sm:p-3 sm:pt-16  md:p-4 md:pt-12  lg:p-6 lg:pt-16 ">
+            <div className="max-w-full mx-auto p-2 pt-16 sm:p-3 sm:pt-16 md:p-4 md:pt-12 lg:p-6 lg:pt-16">
                 <div className="p-4 lg:p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-6">
@@ -439,10 +525,22 @@ export function AdminTable() {
                             <p className="text-sm sm:text-2xl text-slate-500">Manage your contacts</p>
                         </div>
 
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            <button
+                                onClick={copyEmails}
+                                className="px-2 py-1 text-xs md:px-3 md:py-2 md:text-sm rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700"
+                            >
+                                Copy emails
+                            </button>
+                            <button
+                                onClick={copyTableForExcel}
+                                className="px-2 py-1 text-xs md:px-3 md:py-2 md:text-sm rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700"
+                            >
+                                Copy table
+                            </button>
                             <button
                                 onClick={exportToCsv}
-                                className=" px-2 py-1 text-xs  md:px-3 md:py-2 md:text-sm rounded bg-[#0B62C1] hover:bg-emerald-500  text-white "
+                                className="px-2 py-1 text-xs md:px-3 md:py-2 md:text-sm rounded bg-[#0B62C1] hover:bg-emerald-500 text-white"
                             >
                                 Export CSV
                             </button>
@@ -479,69 +577,65 @@ export function AdminTable() {
                         <table className="min-w-full text-xs sm:text-sm">
                             <thead className="bg-slate-300">
                                 <tr>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Name</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Academic Title</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Email</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Mobile</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Office Phone</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Country</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">State/Region</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">City</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Organization</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Department</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Specialty</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Occupation</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">Name</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Academic Title</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Email</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Mobile</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Office Phone</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Country</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">State/Region</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">City</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Organization</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Department</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Specialty</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Occupation</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         Hospital / Clinic Address
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
-                                        Admin Assistant
-                                    </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">Admin Assistant</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         Admin Assistant Email
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         Admin Assistant Phone
                                     </th>
 
                                     {/* Investigator columns */}
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
-                                        Investigator?
-                                    </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">Investigator?</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         Has PI Experience
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         PI Experience Notes
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         Interested in PI Role
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         PI Interest Notes
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         Has Sub-I Experience
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         Sub-I Experience Notes
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         Interested in Sub-I Role
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         Sub-I Interest Notes
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">GCP Trained</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">GCP Trained</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         GCP Last Training Date
                                     </th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">
+                                    <th className="px-3 py-3 text-left text-slate-700">
                                         Investigator Notes
                                     </th>
 
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Created By</th>
-                                    <th className="px-3 py-3 text-left text-slate-700 ">Created</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Created By</th>
+                                    <th className="px-3 py-3 text-left text-slate-700">Created</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -565,7 +659,9 @@ export function AdminTable() {
                                             <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
                                                 {r.academic_title ?? ''}
                                             </td>
-                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{r.email}</td>
+                                            <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
+                                                {r.email}
+                                            </td>
                                             <td className="px-3 py-3 text-slate-700 whitespace-nowrap">
                                                 {r.mobile_phone}
                                             </td>
@@ -655,10 +751,7 @@ export function AdminTable() {
                                 })}
                                 {filtered.length === 0 && (
                                     <tr>
-                                        <td
-                                            colSpan={32}
-                                            className="px-3 py-6 text-center text-slate-400"
-                                        >
+                                        <td colSpan={32} className="px-3 py-6 text-center text-slate-400">
                                             No contacts found
                                         </td>
                                     </tr>
